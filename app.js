@@ -29,7 +29,8 @@ const elements = {
   birthPlace: $('#birthPlaceInput'), deathDate: $('#deathDateInput'), deathPlace: $('#deathPlaceInput'), generation: $('#generationInput'), father: $('#fatherInput'), mother: $('#motherInput'), partner: $('#partnerInput'),
   notes: $('#notesInput'), image: $('#imageInput'), imagePreview: $('#imagePreview'), imagePrompt: $('#imagePrompt'), removeImage: $('#removeImageButton'),
   confirmDialog: $('#confirmDialog'), toast: $('#toast'), template: $('#personTemplate'), syncButton: $('#syncButton'),
-  zoomOut: $('#zoomOutButton'), zoomIn: $('#zoomInButton'), zoomReset: $('#zoomResetButton'), fitTree: $('#fitTreeButton'), autoLayout: $('#autoLayoutButton')
+  zoomOut: $('#zoomOutButton'), zoomIn: $('#zoomInButton'), zoomReset: $('#zoomResetButton'), fitTree: $('#fitTreeButton'), autoLayout: $('#autoLayoutButton'),
+  fullscreen: $('#fullscreenButton'), mobileView: $('#mobileViewButton'), treeShell: document.querySelector('.tree-shell')
 };
 
 function setSyncStatus(text, type = '') { elements.syncStatus.textContent = text; elements.syncStatus.dataset.type = type; }
@@ -357,6 +358,41 @@ function fitTree() {
   state.view.scale=scale; state.view.x=(elements.treeViewport.clientWidth-(maxX-minX)*scale)/2-minX*scale; state.view.y=(elements.treeViewport.clientHeight-(maxY-minY)*scale)/2-minY*scale; applyView();
 }
 
+
+function updateViewModeButtons() {
+  const isFullscreen = document.fullscreenElement === elements.treeShell;
+  const isMobile = elements.treeShell.classList.contains('mobile-view');
+  if (elements.fullscreen) {
+    elements.fullscreen.setAttribute('aria-pressed', String(isFullscreen));
+    elements.fullscreen.textContent = isFullscreen ? '⤢ Ieși full screen' : '⛶ Full screen';
+  }
+  if (elements.mobileView) {
+    elements.mobileView.setAttribute('aria-pressed', String(isMobile));
+    elements.mobileView.textContent = isMobile ? '🖥 Desktop view' : '📱 Mobile view';
+  }
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement === elements.treeShell) await document.exitFullscreen();
+    else if (elements.treeShell.requestFullscreen) await elements.treeShell.requestFullscreen();
+    else { showToast('Browserul nu suportă modul Full Screen pentru această pagină.'); return; }
+  } catch (error) {
+    console.error(error);
+    showToast('Full Screen nu a putut fi activat.');
+  }
+}
+
+function toggleMobileView() {
+  const active = elements.treeShell.classList.toggle('mobile-view');
+  updateViewModeButtons();
+  requestAnimationFrame(() => {
+    drawConnections();
+    fitTree();
+  });
+  showToast(active ? 'Mobile view activat.' : 'Desktop view activat.');
+}
+
 function startCardDrag(event) {
   if (event.button !== 0 || event.target.closest('button')) return;
   const card = event.currentTarget, id = card.dataset.id;
@@ -466,6 +502,6 @@ let toastTimer;function showToast(message){clearTimeout(toastTimer);elements.toa
 $('#openAddModal').addEventListener('click',openAddModal);$('#emptyAddButton').addEventListener('click',openAddModal);$('#closeModal').addEventListener('click',closeModal);$('#cancelButton').addEventListener('click',closeModal);elements.form.addEventListener('submit',handleSubmit);
 elements.search.addEventListener('input',(e)=>{state.search=e.target.value;render();});elements.image.addEventListener('change',(e)=>{const[file]=e.target.files;if(file)handleImage(file);});elements.removeImage.addEventListener('click',()=>{state.pendingImage=null;state.removeExistingImage=true;elements.image.value='';elements.imagePreview.removeAttribute('src');elements.imagePreview.hidden=true;elements.imagePrompt.hidden=false;elements.removeImage.hidden=true;});
 elements.syncButton.addEventListener('click',()=>syncFromRemote({notify:true}));elements.confirmDialog.addEventListener('close',()=>{if(elements.confirmDialog.returnValue==='confirm')confirmDelete();else state.deleteId=null;});elements.dialog.addEventListener('click',(e)=>{if(e.target===elements.dialog)closeModal();});
-elements.zoomIn.addEventListener('click',()=>setZoom(state.view.scale+.15));elements.zoomOut.addEventListener('click',()=>setZoom(state.view.scale-.15));elements.zoomReset.addEventListener('click',()=>{state.view={x:80,y:50,scale:1};applyView();});elements.fitTree.addEventListener('click',fitTree);elements.autoLayout.addEventListener('click',autoLayout);
+elements.zoomIn.addEventListener('click',()=>setZoom(state.view.scale+.15));elements.zoomOut.addEventListener('click',()=>setZoom(state.view.scale-.15));elements.zoomReset.addEventListener('click',()=>{state.view={x:80,y:50,scale:1};applyView();});elements.fitTree.addEventListener('click',fitTree);elements.autoLayout.addEventListener('click',autoLayout);elements.fullscreen?.addEventListener('click',toggleFullscreen);elements.mobileView?.addEventListener('click',toggleMobileView);document.addEventListener('fullscreenchange',()=>{updateViewModeButtons();requestAnimationFrame(()=>{drawConnections();fitTree();});});
 elements.treeViewport.addEventListener('wheel',(e)=>{e.preventDefault();const r=elements.treeViewport.getBoundingClientRect();setZoom(state.view.scale*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top);},{passive:false});elements.treeViewport.addEventListener('pointerdown',startPan);elements.treeViewport.addEventListener('pointermove',movePan);elements.treeViewport.addEventListener('pointerup',endPan);elements.treeViewport.addEventListener('pointercancel',endPan);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncFromRemote();});window.addEventListener('focus',()=>syncFromRemote());window.addEventListener('online',()=>syncFromRemote({notify:true}));window.addEventListener('resize',()=>requestAnimationFrame(drawConnections));setInterval(()=>{if(!document.hidden)syncFromRemote();},SYNC_INTERVAL_MS);syncFromRemote({notify:false});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncFromRemote();});window.addEventListener('focus',()=>syncFromRemote());window.addEventListener('online',()=>syncFromRemote({notify:true}));window.addEventListener('resize',()=>requestAnimationFrame(drawConnections));setInterval(()=>{if(!document.hidden)syncFromRemote();},SYNC_INTERVAL_MS);updateViewModeButtons();syncFromRemote({notify:false});

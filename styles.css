@@ -31,3 +31,44 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:inherit}
   font-style: italic;
   font-weight: 700;
 }
+
+
+/* v8 — Full screen + Mobile view */
+.view-toggle[aria-pressed="true"]{background:#e9edff;border-color:#bdc7fb;color:#4255c5;box-shadow:inset 0 0 0 1px rgba(82,103,232,.08)}
+.tree-shell:fullscreen{width:100%;height:100%;max-width:none;margin:0;border:0;border-radius:0;background:#f8fafc;display:flex;flex-direction:column;box-shadow:none}
+.tree-shell:fullscreen .tree-shell__topline{flex:0 0 auto;background:rgba(255,255,255,.96);backdrop-filter:blur(14px)}
+.tree-shell:fullscreen .relationship-legend{flex:0 0 auto;background:#fff}
+.tree-shell:fullscreen .tree-viewport{flex:1 1 auto;height:auto;min-height:0;border-radius:0}
+.tree-shell:fullscreen .canvas-tip{bottom:18px;right:18px}
+.tree-shell:fullscreen .fullscreen-only-hide{display:none}
+
+.tree-shell.mobile-view .tree-shell__topline{padding:.9rem 1rem;gap:.8rem}
+.tree-shell.mobile-view .tree-shell__topline>div:first-child{max-width:440px}
+.tree-shell.mobile-view .tree-hint{font-size:.78rem;line-height:1.35}
+.tree-shell.mobile-view .relationship-legend{gap:.7rem;padding:.6rem .9rem;font-size:.68rem}
+.tree-shell.mobile-view .tree-controls{gap:.35rem}
+.tree-shell.mobile-view .tree-controls .button{min-height:38px;padding:.55rem .7rem;font-size:.72rem}
+.tree-shell.mobile-view .icon-control,.tree-shell.mobile-view .zoom-label{height:38px}
+.tree-shell.mobile-view .icon-control{width:38px}
+.tree-shell.mobile-view .zoom-label{min-width:58px}
+.tree-shell.mobile-view .tree-viewport{height:700px;background-size:18px 18px}
+.tree-shell.mobile-view .person-card{width:176px;min-height:100px;grid-template-columns:52px 1fr;gap:.65rem;padding:.72rem;border-radius:16px}
+.tree-shell.mobile-view .portrait-wrap{width:52px;height:52px;border-radius:13px}
+.tree-shell.mobile-view .person-card__placeholder::before{width:22px;height:22px;box-shadow:0 21px 0 7px #b9c2cf}
+.tree-shell.mobile-view .person-card__content{padding-right:3px}
+.tree-shell.mobile-view .person-card__badges{gap:.25rem;margin-bottom:.25rem}
+.tree-shell.mobile-view .person-card__generation,.tree-shell.mobile-view .person-card__age{min-height:18px;padding:.16rem .32rem;font-size:.54rem}
+.tree-shell.mobile-view .person-card__relation{font-size:.55rem}
+.tree-shell.mobile-view .person-card__name{font-size:.86rem}
+.tree-shell.mobile-view .person-card__nickname{font-size:.72rem}
+.tree-shell.mobile-view .person-card__birth-name,.tree-shell.mobile-view .person-card__years,.tree-shell.mobile-view .person-card__place{font-size:.62rem}
+.tree-shell.mobile-view .person-card__actions{gap:.25rem;padding-top:.5rem}
+.tree-shell.mobile-view .card-action{min-height:27px;padding:.28rem .4rem;font-size:.58rem}
+.tree-shell.mobile-view .person-card__drag{top:7px;right:7px;transform:scale(.82)}
+.tree-shell.mobile-view .generation-band__label{font-size:.58rem;padding:.25rem .45rem}
+
+@media(max-width:600px){
+  .tree-controls .view-toggle{flex-basis:calc(50% - .25rem)}
+  .tree-shell.mobile-view .tree-viewport{height:620px}
+  .tree-shell.mobile-view .person-card{width:168px}
+}

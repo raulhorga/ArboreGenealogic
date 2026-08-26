@@ -65,3 +65,11 @@ La aranjarea automată, partenerii/soții din aceeași generație sunt tratați 
 - câmp opțional „Poreclă” pentru fiecare persoană;
 - porecla apare pe card, dacă este completată;
 - căutarea găsește persoanele și după poreclă.
+
+
+## v8 — Full Screen și Mobile View
+
+- buton **Full screen** pentru a extinde canvasul genealogic pe tot ecranul;
+- buton **Mobile view** pentru carduri și controale compacte, optimizate pentru telefon;
+- comutarea modurilor păstrează drag & drop, zoom, pan, relațiile și aranjarea automată;
+- la intrarea/ieșirea din full screen arborele este reîncadrat automat.
