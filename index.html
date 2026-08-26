@@ -1,1 +1,135 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#eef2f7" />
+  <title>Arborele genealogic al familiei</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero__content">
+      <p class="eyebrow">ARHIVA FAMILIEI</p>
+      <h1>Arbore genealogic <span>interactiv</span></h1>
+      <p class="subtitle">Explorează generațiile, mută persoanele liber și urmărește legăturile dintre părinți, copii, parteneri și frați.</p>
+    </div>
+    <div class="hero__stats" aria-live="polite">
+      <strong id="totalCount">0</strong>
+      <span>persoane în familie</span>
+      <small id="syncStatus" class="sync-status">Se conectează…</small>
+    </div>
+  </header>
 
+  <main class="container">
+    <section class="toolbar" aria-label="Instrumente arbore genealogic">
+      <label class="search-box">
+        <span class="sr-only">Caută o persoană</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+        <input id="searchInput" type="search" placeholder="Caută după nume, localitate, an sau rudă..." autocomplete="off" />
+      </label>
+      <button id="openAddModal" class="button button--primary" type="button">+ Adaugă persoană</button>
+    </section>
+
+    <section id="resultInfo" class="result-info" aria-live="polite"></section>
+
+    <section class="tree-shell" aria-label="Arbore genealogic interactiv">
+      <div class="tree-shell__topline">
+        <div>
+          <p class="eyebrow">HARTA FAMILIEI</p>
+          <h2>Arbore interactiv <span class="version-badge">v4</span></h2>
+          <p class="tree-hint">Trage cardurile pentru a le rearanja. Trage fundalul pentru a naviga. Rotița mouse-ului face zoom.</p>
+        </div>
+        <div class="tree-controls" aria-label="Control arbore">
+          <button id="zoomOutButton" class="icon-control" type="button" title="Micșorează">−</button>
+          <button id="zoomResetButton" class="zoom-label" type="button" title="Zoom 100%">100%</button>
+          <button id="zoomInButton" class="icon-control" type="button" title="Mărește">+</button>
+          <button id="fitTreeButton" class="button button--soft" type="button">Încadrează</button>
+          <button id="autoLayoutButton" class="button button--soft" type="button">Aranjare automată</button>
+        </div>
+      </div>
+
+      <div class="relationship-legend" aria-label="Legendă relații">
+        <span><i class="legend-line legend-line--parent"></i>Părinte → copil</span>
+        <span><i class="legend-line legend-line--partner"></i>Parteneri</span>
+        <span><i class="legend-line legend-line--sibling"></i>Frați / surori</span>
+      </div>
+
+      <div id="treeViewport" class="tree-viewport" tabindex="0" aria-label="Canvas arbore genealogic. Poți trage fundalul pentru navigare.">
+        <div id="treeStage" class="tree-stage">
+          <div id="generationBands" class="generation-bands" aria-hidden="true"></div>
+          <svg id="treeLines" class="tree-lines" aria-hidden="true"></svg>
+          <div id="familyTree" class="family-tree"></div>
+        </div>
+        <div class="canvas-tip">Ține apăsat și trage pentru navigare</div>
+      </div>
+    </section>
+
+    <section id="emptyState" class="empty-state" hidden>
+      <div class="empty-state__icon">🌿</div>
+      <h2 id="emptyTitle">Arborele este gol</h2>
+      <p id="emptyText">Adaugă prima persoană din familie.</p>
+      <button id="emptyAddButton" class="button button--primary" type="button">Adaugă prima persoană</button>
+    </section>
+
+    <section class="data-tools">
+      <div>
+        <h2>Sincronizare EtherCalc</h2>
+        <p>Datele, fotografiile și pozițiile cardurilor sunt salvate în foaia EtherCalc a familiei.</p>
+      </div>
+      <div class="data-tools__actions">
+        <button id="syncButton" class="button button--secondary" type="button">Sincronizează acum</button>
+        <a class="button button--secondary" href="https://ethercalc.net/=k3im7605mgvf" target="_blank" rel="noopener noreferrer">Deschide EtherCalc</a>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="personDialog" class="modal">
+    <form id="personForm" method="dialog" novalidate>
+      <div class="modal__header">
+        <div><p class="eyebrow">MEMBRU AL FAMILIEI</p><h2 id="modalTitle">Adaugă o persoană</h2></div>
+        <button id="closeModal" class="icon-button" type="button" aria-label="Închide">×</button>
+      </div>
+      <input id="personId" type="hidden" />
+      <div class="form-grid">
+        <label class="field field--full"><span>Nume complet *</span><input id="nameInput" name="name" required maxlength="120" placeholder="Ex: Maria Popescu" /><small class="error" data-error-for="name"></small></label>
+        <label class="field field--full"><span>Poreclă</span><input id="nicknameInput" name="nickname" maxlength="80" placeholder="Ex: Mimi, Nelu, Tanti Nuți" /></label>
+        <label class="field"><span>Sex</span><select id="genderInput" name="gender"><option value="">Nespecificat</option><option value="F">Femeie</option><option value="M">Bărbat</option><option value="X">Altul / nespecificat</option></select></label>
+        <label class="field"><span>Nume anterior / la naștere</span><input id="birthNameInput" name="birthName" maxlength="120" placeholder="Ex: Ionescu" /></label>
+        <label class="field"><span>Data nașterii</span><input id="birthDateInput" name="birthDate" type="date" /></label>
+        <label class="field"><span>Locul nașterii</span><input id="birthPlaceInput" name="birthPlace" maxlength="120" placeholder="Ex: Brașov" /></label>
+        <label class="field"><span>Data decesului</span><input id="deathDateInput" name="deathDate" type="date" /></label>
+        <label class="field"><span>Locul decesului</span><input id="deathPlaceInput" name="deathPlace" maxlength="120" placeholder="Opțional" /></label>
+        <label class="field"><span>Generația</span><select id="generationInput" name="generation"><option value="auto">Automat din părinți</option><option value="0">Generația 1</option><option value="1">Generația 2</option><option value="2">Generația 3</option><option value="3">Generația 4</option><option value="4">Generația 5</option><option value="5">Generația 6</option><option value="6">Generația 7</option><option value="7">Generația 8</option><option value="8">Generația 9</option><option value="9">Generația 10</option><option value="10">Generația 11</option><option value="11">Generația 12</option></select><small class="field-help">Poți schimba generația și trăgând persoana într-o altă bandă.</small></label>
+        <label class="field"><span>Tată</span><select id="fatherInput" name="fatherId"></select></label>
+        <label class="field"><span>Mamă</span><select id="motherInput" name="motherId"></select></label>
+        <label class="field field--full"><span>Partener / soț / soție</span><select id="partnerInput" name="partnerId"></select></label>
+        <label class="field field--full"><span>Notițe și poveste de familie</span><textarea id="notesInput" name="notes" rows="4" maxlength="1200" placeholder="Ocupație, amintiri, porecle, evenimente importante, surse..."></textarea></label>
+        <div class="field field--full">
+          <span>Fotografie</span>
+          <label id="imageDropzone" class="image-dropzone"><input id="imageInput" name="image" type="file" accept="image/*" /><img id="imagePreview" alt="Previzualizare fotografie" hidden /><div id="imagePrompt"><strong>Alege o fotografie</strong><small>JPG, PNG sau WEBP. Imaginea va fi optimizată automat.</small></div></label>
+          <button id="removeImageButton" class="text-button" type="button" hidden>Elimină fotografia</button>
+        </div>
+      </div>
+      <div class="modal__footer"><button id="cancelButton" class="button button--ghost" type="button">Renunță</button><button class="button button--primary" type="submit">Salvează persoana</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="confirm-modal">
+    <form method="dialog"><h2>Ștergi persoana?</h2><p>Persoana va dispărea din arbore. Relațiile către ea vor fi ignorate.</p><div class="modal__footer"><button value="cancel" class="button button--ghost">Renunță</button><button value="confirm" class="button button--danger">Șterge</button></div></form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <template id="personTemplate">
+    <article class="person-card" tabindex="0">
+      <div class="person-card__drag" title="Trage pentru a muta"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="portrait-wrap"><img class="person-card__image" alt="" /><div class="person-card__placeholder" aria-hidden="true"></div></div>
+      <div class="person-card__content"><div class="person-card__badges"><span class="person-card__generation"></span><span class="person-card__age"></span></div><p class="person-card__relation"></p><h3 class="person-card__name"></h3><p class="person-card__nickname"></p><p class="person-card__birth-name"></p><p class="person-card__years"></p><p class="person-card__place"></p></div>
+      <div class="person-card__actions"><button class="card-action generation-down-action" type="button" title="Mută în generația anterioară">Gen −</button><button class="card-action generation-up-action" type="button" title="Mută în generația următoare">Gen +</button><button class="card-action edit-action" type="button">Editează</button><button class="card-action delete-action" type="button">Șterge</button></div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
