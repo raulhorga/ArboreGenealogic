@@ -72,3 +72,32 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:inherit}
   .tree-shell.mobile-view .tree-viewport{height:620px}
   .tree-shell.mobile-view .person-card{width:168px}
 }
+
+
+/* v9 — interacțiune stabilă canvas */
+.tree-viewport{
+  overscroll-behavior:contain;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.tree-viewport.is-panning{cursor:grabbing}
+.tree-viewport.dragging-person{cursor:default}
+.tree-stage{backface-visibility:hidden}
+.person-card{cursor:default;touch-action:auto;transform:none!important}
+.person-card:hover,.person-card:focus-visible{transform:none!important}
+.person-card.is-dragging{z-index:50;transform:scale(1.015)!important;pointer-events:none}
+.person-card__drag{
+  width:34px;height:34px;top:7px;right:7px;
+  place-content:center;border:1px solid transparent;border-radius:10px;
+  cursor:grab;touch-action:none;opacity:.62;background:rgba(248,250,252,.88);
+}
+.person-card__drag:hover{opacity:1;border-color:#d8deea;background:#fff}
+.person-card__drag:active{cursor:grabbing}
+.person-card__drag::after{content:"⋮⋮";font:800 16px/1 ui-sans-serif,system-ui;color:#657189;letter-spacing:-3px;transform:rotate(90deg)}
+.person-card__drag span{display:none}
+.person-card__actions{position:relative;z-index:3}
+.canvas-tip{max-width:min(92%,620px);line-height:1.35}
+@media(max-width:600px){
+  .person-card__drag{width:38px;height:38px;top:5px;right:5px;opacity:.9}
+  .canvas-tip{left:10px;right:10px;bottom:10px;text-align:center;font-size:.64rem}
+}

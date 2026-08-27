@@ -73,3 +73,12 @@ La aranjarea automată, partenerii/soții din aceeași generație sunt tratați 
 - buton **Mobile view** pentru carduri și controale compacte, optimizate pentru telefon;
 - comutarea modurilor păstrează drag & drop, zoom, pan, relațiile și aranjarea automată;
 - la intrarea/ieșirea din full screen arborele este reîncadrat automat.
+
+
+## Navigare v9
+
+- fundalul canvasului este folosit exclusiv pentru pan;
+- persoanele se mută numai din mânerul ⋮⋮ al cardului, pentru a evita mutările accidentale;
+- pan-ul este blocat în timpul mutării unei persoane;
+- zoom-ul cu rotița este progresiv și centrat pe cursor;
+- după mutare, persoana se fixează în banda generației și poziția este salvată în EtherCalc.

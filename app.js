@@ -18,7 +18,7 @@ const MAX_GENERATIONS = 12;
 const state = {
   records: [], people: [], search: '', pendingImage: null, removeExistingImage: false,
   deleteId: null, syncing: false, saveQueue: Promise.resolve(), lastRemoteSignature: '',
-  view: { x: 80, y: 50, scale: 1 }, drag: null, pan: null
+  view: { x: 80, y: 50, scale: 1 }, drag: null, pan: null, pinch: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -249,7 +249,8 @@ function renderPerson(person, defaults) {
   fragment.querySelector('.generation-up-action').addEventListener('click', (e) => { e.stopPropagation(); movePersonGeneration(person.id, 1); });
   fragment.querySelector('.edit-action').addEventListener('click', (e) => { e.stopPropagation(); openEditModal(person.id); });
   fragment.querySelector('.delete-action').addEventListener('click', (e) => { e.stopPropagation(); askDelete(person.id); });
-  card.addEventListener('pointerdown', startCardDrag);
+  const dragHandle = fragment.querySelector('.person-card__drag');
+  dragHandle?.addEventListener('pointerdown', startCardDrag);
   return fragment;
 }
 
@@ -394,34 +395,69 @@ function toggleMobileView() {
 }
 
 function startCardDrag(event) {
-  if (event.button !== 0 || event.target.closest('button')) return;
-  const card = event.currentTarget, id = card.dataset.id;
-  const rect = elements.treeViewport.getBoundingClientRect();
-  state.drag = { id, card, pointerId:event.pointerId, startX:event.clientX, startY:event.clientY, left:parseFloat(card.style.left)||0, top:parseFloat(card.style.top)||0, moved:false, viewportRect:rect };
-  card.setPointerCapture(event.pointerId); card.classList.add('is-dragging');
-  card.addEventListener('pointermove', moveCardDrag); card.addEventListener('pointerup', endCardDrag); card.addEventListener('pointercancel', endCardDrag);
+  if (event.button !== 0 && event.pointerType !== 'touch') return;
+  event.preventDefault();
+  event.stopPropagation();
+  const handle = event.currentTarget;
+  const card = handle.closest('.person-card');
+  if (!card || state.pan || state.pinch) return;
+  const id = card.dataset.id;
+  state.drag = {
+    id, card, handle, pointerId: event.pointerId,
+    startX: event.clientX, startY: event.clientY,
+    left: parseFloat(card.style.left) || 0,
+    top: parseFloat(card.style.top) || 0,
+    moved: false
+  };
+  handle.setPointerCapture(event.pointerId);
+  card.classList.add('is-dragging');
+  elements.treeViewport.classList.add('dragging-person');
+  handle.addEventListener('pointermove', moveCardDrag);
+  handle.addEventListener('pointerup', endCardDrag);
+  handle.addEventListener('pointercancel', endCardDrag);
 }
+
 function moveCardDrag(event) {
   if (!state.drag || event.pointerId !== state.drag.pointerId) return;
-  const dx=(event.clientX-state.drag.startX)/state.view.scale, dy=(event.clientY-state.drag.startY)/state.view.scale;
-  if (Math.abs(dx)+Math.abs(dy)>3) state.drag.moved=true;
-  const left=clamp(state.drag.left+dx,20,STAGE_WIDTH-state.drag.card.offsetWidth-20), top=clamp(state.drag.top+dy,20,STAGE_HEIGHT-state.drag.card.offsetHeight-20);
-  state.drag.card.style.left=`${left}px`; state.drag.card.style.top=`${top}px`; drawConnections();
+  event.preventDefault();
+  const dx = (event.clientX - state.drag.startX) / state.view.scale;
+  const dy = (event.clientY - state.drag.startY) / state.view.scale;
+  if (Math.hypot(dx, dy) > 4) state.drag.moved = true;
+  const left = clamp(state.drag.left + dx, 20, STAGE_WIDTH - state.drag.card.offsetWidth - 20);
+  const top = clamp(state.drag.top + dy, 20, STAGE_HEIGHT - state.drag.card.offsetHeight - 20);
+  state.drag.card.style.left = `${left}px`;
+  state.drag.card.style.top = `${top}px`;
+  requestAnimationFrame(drawConnections);
 }
+
 async function endCardDrag(event) {
   if (!state.drag || event.pointerId !== state.drag.pointerId) return;
-  const { card, id, moved }=state.drag; card.classList.remove('is-dragging');
-  card.removeEventListener('pointermove',moveCardDrag); card.removeEventListener('pointerup',endCardDrag); card.removeEventListener('pointercancel',endCardDrag); state.drag=null;
+  const { card, handle, id, moved } = state.drag;
+  card.classList.remove('is-dragging');
+  elements.treeViewport.classList.remove('dragging-person');
+  handle.removeEventListener('pointermove', moveCardDrag);
+  handle.removeEventListener('pointerup', endCardDrag);
+  handle.removeEventListener('pointercancel', endCardDrag);
+  try { if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId); } catch (_) {}
+  state.drag = null;
   if (!moved) return;
-  const person=getPerson(id); if (!person) return;
-  const left = Math.round(parseFloat(card.style.left)||0);
-  const top = Math.round(parseFloat(card.style.top)||0);
+
+  const person = getPerson(id);
+  if (!person) return;
+  const left = Math.round(parseFloat(card.style.left) || 0);
+  const top = Math.round(parseFloat(card.style.top) || 0);
   const manualGeneration = generationFromY(top);
   const snappedTop = generationY(manualGeneration);
   card.style.top = `${snappedTop}px`;
   drawConnections();
-  const changed={...person,posX:left,posY:snappedTop,manualGeneration,updatedAt:new Date().toISOString()};
-  try { await persistChange(changed); showToast(`Mutat în Generația ${manualGeneration + 1}.`); } catch(e) { console.error(e); showToast('Poziția nu a putut fi salvată.'); }
+  const changed = { ...person, posX: left, posY: snappedTop, manualGeneration, updatedAt: new Date().toISOString() };
+  try {
+    await persistChange(changed);
+    showToast(`Poziție salvată · Generația ${manualGeneration + 1}`);
+  } catch (e) {
+    console.error(e);
+    showToast('Poziția nu a putut fi salvată.');
+  }
 }
 
 async function movePersonGeneration(id, delta) {
@@ -448,12 +484,45 @@ async function movePersonGeneration(id, delta) {
   }
 }
 
-function startPan(event) {
-  if (event.button !== 0 || event.target.closest('.person-card,button,input,select,textarea,a')) return;
-  state.pan={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,x:state.view.x,y:state.view.y}; elements.treeViewport.setPointerCapture(event.pointerId); elements.treeViewport.classList.add('is-panning');
+function isCanvasTarget(target) {
+  return !target.closest('.person-card,button,input,select,textarea,a,label');
 }
-function movePan(event) { if (!state.pan || event.pointerId!==state.pan.pointerId) return; state.view.x=state.pan.x+(event.clientX-state.pan.startX); state.view.y=state.pan.y+(event.clientY-state.pan.startY); applyView(); }
-function endPan(event) { if (!state.pan || event.pointerId!==state.pan.pointerId) return; state.pan=null; elements.treeViewport.classList.remove('is-panning'); }
+
+function startPan(event) {
+  if (state.drag || state.pinch || !isCanvasTarget(event.target)) return;
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  event.preventDefault();
+  state.pan = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    x: state.view.x,
+    y: state.view.y
+  };
+  elements.treeViewport.setPointerCapture(event.pointerId);
+  elements.treeViewport.classList.add('is-panning');
+}
+
+function movePan(event) {
+  if (!state.pan || state.drag || event.pointerId !== state.pan.pointerId) return;
+  event.preventDefault();
+  state.view.x = state.pan.x + (event.clientX - state.pan.startX);
+  state.view.y = state.pan.y + (event.clientY - state.pan.startY);
+  applyView();
+}
+
+function endPan(event) {
+  if (!state.pan || event.pointerId !== state.pan.pointerId) return;
+  try { if (elements.treeViewport.hasPointerCapture(event.pointerId)) elements.treeViewport.releasePointerCapture(event.pointerId); } catch (_) {}
+  state.pan = null;
+  elements.treeViewport.classList.remove('is-panning');
+}
+
+function zoomAt(delta, clientX, clientY) {
+  const rect = elements.treeViewport.getBoundingClientRect();
+  const factor = Math.exp(-delta * 0.0015);
+  setZoom(state.view.scale * factor, clientX - rect.left, clientY - rect.top);
+}
 
 async function autoLayout() {
   if (!state.people.length) return;
@@ -503,5 +572,10 @@ $('#openAddModal').addEventListener('click',openAddModal);$('#emptyAddButton').a
 elements.search.addEventListener('input',(e)=>{state.search=e.target.value;render();});elements.image.addEventListener('change',(e)=>{const[file]=e.target.files;if(file)handleImage(file);});elements.removeImage.addEventListener('click',()=>{state.pendingImage=null;state.removeExistingImage=true;elements.image.value='';elements.imagePreview.removeAttribute('src');elements.imagePreview.hidden=true;elements.imagePrompt.hidden=false;elements.removeImage.hidden=true;});
 elements.syncButton.addEventListener('click',()=>syncFromRemote({notify:true}));elements.confirmDialog.addEventListener('close',()=>{if(elements.confirmDialog.returnValue==='confirm')confirmDelete();else state.deleteId=null;});elements.dialog.addEventListener('click',(e)=>{if(e.target===elements.dialog)closeModal();});
 elements.zoomIn.addEventListener('click',()=>setZoom(state.view.scale+.15));elements.zoomOut.addEventListener('click',()=>setZoom(state.view.scale-.15));elements.zoomReset.addEventListener('click',()=>{state.view={x:80,y:50,scale:1};applyView();});elements.fitTree.addEventListener('click',fitTree);elements.autoLayout.addEventListener('click',autoLayout);elements.fullscreen?.addEventListener('click',toggleFullscreen);elements.mobileView?.addEventListener('click',toggleMobileView);document.addEventListener('fullscreenchange',()=>{updateViewModeButtons();requestAnimationFrame(()=>{drawConnections();fitTree();});});
-elements.treeViewport.addEventListener('wheel',(e)=>{e.preventDefault();const r=elements.treeViewport.getBoundingClientRect();setZoom(state.view.scale*(e.deltaY<0?1.1:.9),e.clientX-r.left,e.clientY-r.top);},{passive:false});elements.treeViewport.addEventListener('pointerdown',startPan);elements.treeViewport.addEventListener('pointermove',movePan);elements.treeViewport.addEventListener('pointerup',endPan);elements.treeViewport.addEventListener('pointercancel',endPan);
+elements.treeViewport.addEventListener('wheel',(e)=>{e.preventDefault(); zoomAt(e.deltaY,e.clientX,e.clientY);},{passive:false});
+elements.treeViewport.addEventListener('pointerdown',startPan);
+elements.treeViewport.addEventListener('pointermove',movePan);
+elements.treeViewport.addEventListener('pointerup',endPan);
+elements.treeViewport.addEventListener('pointercancel',endPan);
+elements.treeViewport.addEventListener('lostpointercapture',()=>{ if(state.pan){state.pan=null;elements.treeViewport.classList.remove('is-panning');} });
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncFromRemote();});window.addEventListener('focus',()=>syncFromRemote());window.addEventListener('online',()=>syncFromRemote({notify:true}));window.addEventListener('resize',()=>requestAnimationFrame(drawConnections));setInterval(()=>{if(!document.hidden)syncFromRemote();},SYNC_INTERVAL_MS);updateViewModeButtons();syncFromRemote({notify:false});
