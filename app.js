@@ -30,7 +30,7 @@ const elements = {
   notes: $('#notesInput'), image: $('#imageInput'), imagePreview: $('#imagePreview'), imagePrompt: $('#imagePrompt'), removeImage: $('#removeImageButton'),
   confirmDialog: $('#confirmDialog'), toast: $('#toast'), template: $('#personTemplate'), syncButton: $('#syncButton'),
   zoomOut: $('#zoomOutButton'), zoomIn: $('#zoomInButton'), zoomReset: $('#zoomResetButton'), fitTree: $('#fitTreeButton'), autoLayout: $('#autoLayoutButton'),
-  fullscreen: $('#fullscreenButton'), mobileView: $('#mobileViewButton'), treeShell: document.querySelector('.tree-shell')
+  fullscreen: $('#fullscreenButton'), mobileView: $('#mobileViewButton'), exportExcel: $('#exportExcelButton'), exportJpeg: $('#exportJpegButton'), treeShell: document.querySelector('.tree-shell')
 };
 
 function setSyncStatus(text, type = '') { elements.syncStatus.textContent = text; elements.syncStatus.dataset.type = type; }
@@ -557,6 +557,416 @@ function showImagePreview(source){elements.imagePreview.src=source;elements.imag
 function clearErrors(){document.querySelectorAll('.error').forEach((el)=>el.textContent='');elements.name.classList.remove('invalid');}
 function openAddModal(){elements.form.reset();resetImagePreview();elements.id.value='';fillRelationSelects('');elements.generation.value='auto';elements.modalTitle.textContent='Adaugă o persoană';clearErrors();elements.dialog.showModal();setTimeout(()=>elements.name.focus(),50);}
 function openEditModal(id){const p=getPerson(id);if(!p)return;elements.form.reset();resetImagePreview();elements.id.value=p.id;fillRelationSelects(p.id);elements.name.value=p.name||'';elements.nickname.value=p.nickname||'';elements.gender.value=p.gender||'';elements.birthName.value=p.birthName||'';elements.birthDate.value=p.birthDate||'';elements.birthPlace.value=p.birthPlace||'';elements.deathDate.value=p.deathDate||'';elements.deathPlace.value=p.deathPlace||'';elements.generation.value=(p.manualGeneration!==null&&p.manualGeneration!==undefined&&p.manualGeneration!==''&&Number.isInteger(Number(p.manualGeneration)))?String(Number(p.manualGeneration)):'auto';elements.father.value=p.fatherId||'';elements.mother.value=p.motherId||'';elements.partner.value=p.partnerId||'';elements.notes.value=p.notes||'';elements.modalTitle.textContent='Editează persoana';if(p.image)showImagePreview(p.image);clearErrors();elements.dialog.showModal();}
+
+
+function safeFileDate() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function exportExcel() {
+  if (!state.people.length) { showToast('Nu există persoane de exportat.'); return; }
+  const headers = ['Nume', 'Poreclă', 'Sex', 'Data nașterii', 'Locul nașterii', 'Vârsta', 'Data decesului', 'Locul decesului', 'Generația', 'Tată', 'Mamă', 'Partener', 'Frați / surori', 'Notițe', 'Poziție X', 'Poziție Y', 'ID'];
+  const rows = state.people
+    .slice()
+    .sort((a, b) => generationFor(a) - generationFor(b) || (a.birthDate || '9999').localeCompare(b.birthDate || '9999') || a.name.localeCompare(b.name, 'ro'))
+    .map((person) => {
+      const siblings = getSiblings(person.id).map((p) => p.name).join(', ');
+      return [
+        person.name,
+        person.nickname || '',
+        person.gender || '',
+        person.birthDate || '',
+        person.birthPlace || '',
+        ageLabel(person) || '',
+        person.deathDate || '',
+        person.deathPlace || '',
+        `Generația ${generationFor(person) + 1}`,
+        getPerson(person.fatherId)?.name || '',
+        getPerson(person.motherId)?.name || '',
+        getPerson(person.partnerId)?.name || '',
+        siblings,
+        person.notes || '',
+        Number.isFinite(Number(person.posX)) ? Number(person.posX) : '',
+        Number.isFinite(Number(person.posY)) ? Number(person.posY) : '',
+        person.id
+      ];
+    });
+
+  const tableRows = [headers, ...rows].map((row, rowIndex) =>
+    `<tr>${row.map((value) => `<${rowIndex === 0 ? 'th' : 'td'}>${escapeHtml(value)}</${rowIndex === 0 ? 'th' : 'td'}>`).join('')}</tr>`
+  ).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:11pt}th,td{border:1px solid #cbd5e1;padding:6px 8px;vertical-align:top}th{background:#e9edff;font-weight:700;white-space:nowrap}td{mso-number-format:"\\@"}
+  </style></head><body><table>${tableRows}</table></body></html>`;
+  const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  downloadBlob(blob, `arbore-genealogic-${safeFileDate()}.xls`);
+  showToast('Fișierul Excel a fost descărcat.');
+}
+
+
+function treeContentBounds(layout) {
+  const items = state.people
+    .map((person) => {
+      const pos = layout.get(person.id);
+      if (!pos) return null;
+      return { left: pos.x, top: pos.y, right: pos.x + pos.w, bottom: pos.y + pos.h };
+    })
+    .filter(Boolean);
+  if (!items.length) return null;
+  const left = Math.min(...items.map((i) => i.left));
+  const top = Math.min(...items.map((i) => i.top));
+  const right = Math.max(...items.map((i) => i.right));
+  const bottom = Math.max(...items.map((i) => i.bottom));
+  const padX = 140;
+  const padTop = 180;
+  const padBottom = 170;
+  return {
+    x: left - padX,
+    y: top - padTop,
+    width: (right - left) + padX * 2,
+    height: (bottom - top) + padTop + padBottom
+  };
+}
+
+function canvasRoundRect(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function canvasEllipsis(ctx, text, maxWidth) {
+  const value = String(text || '');
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let out = value;
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxWidth) out = out.slice(0, -1);
+  return `${out}…`;
+}
+
+function loadExportImage(src) {
+  return new Promise((resolve) => {
+    if (!src) { resolve(null); return; }
+    const img = new Image();
+    img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function buildExportLayout() {
+  const layout = new Map();
+  const cards = [...elements.tree.querySelectorAll('.person-card')];
+  const byId = new Map(cards.map((card) => [card.dataset.id, card]));
+  state.people.forEach((person) => {
+    const card = byId.get(person.id);
+    const x = card ? (parseFloat(card.style.left) || Number(person.posX) || 0) : (Number(person.posX) || 0);
+    const y = card ? (parseFloat(card.style.top) || Number(person.posY) || 0) : (Number(person.posY) || 0);
+    const w = Math.max(CARD_W, card?.offsetWidth || CARD_W);
+    const h = Math.max(150, card?.offsetHeight || 150);
+    layout.set(person.id, { x, y, w, h });
+  });
+  return layout;
+}
+
+function exportPoint(layout, personId, edge = 'center') {
+  const m = layout.get(personId);
+  if (!m) return null;
+  if (edge === 'top') return { x: m.x + m.w / 2, y: m.y };
+  if (edge === 'bottom') return { x: m.x + m.w / 2, y: m.y + m.h };
+  if (edge === 'left') return { x: m.x, y: m.y + m.h / 2 };
+  if (edge === 'right') return { x: m.x + m.w, y: m.y + m.h / 2 };
+  return { x: m.x + m.w / 2, y: m.y + m.h / 2 };
+}
+
+function drawExportCurve(ctx, a, b, color, width = 2, dashed = false) {
+  if (!a || !b) return;
+  const midY = a.y + (b.y - a.y) * .48;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash(dashed ? [8, 7] : []);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.bezierCurveTo(a.x, midY, b.x, midY, b.x, b.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawExportRelations(ctx, layout) {
+  const parentColor = '#8290a8';
+  const partnerColor = '#b36b85';
+  const siblingColor = '#5d8d7e';
+
+  const drawnParents = new Set();
+  state.people.forEach((person) => {
+    [person.fatherId, person.motherId].filter(Boolean).forEach((parentId) => {
+      if (!getPerson(parentId)) return;
+      const key = `${parentId}>${person.id}`;
+      if (drawnParents.has(key)) return;
+      drawnParents.add(key);
+      drawExportCurve(ctx, exportPoint(layout, parentId, 'bottom'), exportPoint(layout, person.id, 'top'), parentColor, 2.4, false);
+    });
+
+    if (person.partnerId && person.id < person.partnerId && getPerson(person.partnerId)) {
+      const a = exportPoint(layout, person.id, 'center');
+      const b = exportPoint(layout, person.partnerId, 'center');
+      if (a && b) {
+        ctx.save();
+        ctx.strokeStyle = partnerColor;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 7]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.bezierCurveTo((a.x + b.x) / 2, a.y - 18, (a.x + b.x) / 2, b.y - 18, b.x, b.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  });
+
+  const siblingGroups = new Map();
+  state.people.forEach((p) => {
+    const key = [p.fatherId || '', p.motherId || ''].join('|');
+    if (key === '|') return;
+    if (!siblingGroups.has(key)) siblingGroups.set(key, []);
+    siblingGroups.get(key).push(p);
+  });
+  siblingGroups.forEach((members) => {
+    const unique = [...new Map(members.map((p) => [p.id, p])).values()];
+    if (unique.length < 2) return;
+    const points = unique.map((p) => exportPoint(layout, p.id, 'top')).filter(Boolean).sort((a, b) => a.x - b.x);
+    if (points.length < 2) return;
+    const y = Math.min(...points.map((p) => p.y)) - 24;
+    ctx.save();
+    ctx.strokeStyle = siblingColor;
+    ctx.fillStyle = siblingColor;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, y);
+    ctx.lineTo(points[points.length - 1].x, y);
+    ctx.stroke();
+    points.forEach((p) => {
+      ctx.beginPath();
+      ctx.moveTo(p.x, y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  });
+}
+
+async function drawExportCard(ctx, person, image, layout) {
+  const m = layout.get(person.id);
+  if (!m) return;
+  const x = m.x, y = m.y, w = m.w, h = Math.max(150, m.h);
+  const pad = 14;
+  const portrait = Math.min(66, h - 46);
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(28,39,64,.13)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#ffffff';
+  canvasRoundRect(ctx, x, y, w, h, 18);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = '#dfe5ee';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const px = x + pad;
+  const py = y + pad;
+  canvasRoundRect(ctx, px, py, portrait, portrait, 15);
+  ctx.save();
+  ctx.clip();
+  if (image) {
+    const ir = image.width / image.height;
+    const pr = 1;
+    let sx = 0, sy = 0, sw = image.width, sh = image.height;
+    if (ir > pr) { sw = image.height; sx = (image.width - sw) / 2; }
+    else { sh = image.width; sy = (image.height - sh) / 2; }
+    ctx.drawImage(image, sx, sy, sw, sh, px, py, portrait, portrait);
+  } else {
+    ctx.fillStyle = person.gender === 'F' ? '#f6e3ed' : person.gender === 'M' ? '#e4edfb' : '#e9edf3';
+    ctx.fillRect(px, py, portrait, portrait);
+    ctx.fillStyle = '#aeb8c6';
+    ctx.beginPath();
+    ctx.arc(px + portrait / 2, py + portrait * .35, portrait * .17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + portrait / 2, py + portrait * .88, portrait * .30, Math.PI, 0);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  const tx = px + portrait + 12;
+  const maxText = Math.max(60, w - (tx - x) - pad);
+  let ty = y + 19;
+
+  const generation = generationFor(person) + 1;
+  ctx.font = '700 10px Arial, sans-serif';
+  ctx.fillStyle = '#4f61cf';
+  ctx.fillText(`Gen. ${generation}`, tx, ty);
+  const age = ageLabel(person);
+  if (age) {
+    ctx.fillStyle = '#28775f';
+    ctx.fillText(` • ${age}`, tx + Math.min(48, ctx.measureText(`Gen. ${generation}`).width), ty);
+  }
+  ty += 22;
+
+  ctx.font = '700 15px Arial, sans-serif';
+  ctx.fillStyle = '#1f2937';
+  ctx.fillText(canvasEllipsis(ctx, person.name, maxText), tx, ty);
+  ty += 18;
+
+  if (person.nickname) {
+    ctx.font = 'italic 12px Arial, sans-serif';
+    ctx.fillStyle = '#7c5b8d';
+    ctx.fillText(canvasEllipsis(ctx, `„${person.nickname}”`, maxText), tx, ty);
+    ty += 16;
+  }
+
+  ctx.font = '11px Arial, sans-serif';
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText(canvasEllipsis(ctx, lifespan(person), maxText), tx, ty);
+  ty += 15;
+
+  if (person.birthPlace) ctx.fillText(canvasEllipsis(ctx, person.birthPlace, maxText), tx, ty);
+
+  ctx.restore();
+}
+
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl).split(',');
+  const meta = parts[0] || '';
+  const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+  const binary = atob(parts[1] || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function exportJpeg() {
+  if (!state.people.length) { showToast('Nu există arbore de exportat.'); return; }
+  setSyncStatus('Se pregătește JPEG-ul…');
+  try {
+    drawConnections();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const layout = buildExportLayout();
+    const bounds = treeContentBounds(layout);
+    if (!bounds) throw new Error('Arborele nu poate fi exportat.');
+
+    const maxSide = 8000;
+    const baseScale = Math.min(2, maxSide / Math.max(bounds.width, bounds.height));
+    const maxPixels = 32000000;
+    let width = Math.max(1, Math.round(bounds.width * baseScale));
+    let height = Math.max(1, Math.round(bounds.height * baseScale));
+    let pixelScale = 1;
+    if (width * height > maxPixels) pixelScale = Math.sqrt(maxPixels / (width * height));
+    width = Math.max(1, Math.round(width * pixelScale));
+    height = Math.max(1, Math.round(height * pixelScale));
+    const finalScale = baseScale * pixelScale;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) throw new Error('Browserul nu poate crea canvasul pentru export.');
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, width, height);
+    ctx.scale(finalScale, finalScale);
+    ctx.translate(-bounds.x, -bounds.y);
+
+    ctx.save();
+    const gradient = ctx.createLinearGradient(bounds.x, bounds.y, bounds.x, bounds.y + bounds.height);
+    gradient.addColorStop(0, '#f8fafc');
+    gradient.addColorStop(1, '#eef2f7');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.fillStyle = '#d8e1ea';
+    for (let gx = Math.floor(bounds.x / 24) * 24; gx < bounds.x + bounds.width; gx += 24) {
+      for (let gy = Math.floor(bounds.y / 24) * 24; gy < bounds.y + bounds.height; gy += 24) {
+        ctx.beginPath();
+        ctx.arc(gx, gy, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Benzile generațiilor pentru orientare vizuală în export.
+    const generations = [...new Set(state.people.map((person) => generationFor(person)))].sort((a, b) => a - b);
+    ctx.save();
+    ctx.font = '700 12px Arial, sans-serif';
+    ctx.textBaseline = 'middle';
+    generations.forEach((gen, index) => {
+      const y = generationY(gen) - 42;
+      const bandH = 220;
+      ctx.fillStyle = index % 2 ? 'rgba(255,255,255,0.32)' : 'rgba(80,102,132,0.045)';
+      ctx.fillRect(bounds.x + 18, y, bounds.width - 36, bandH);
+      ctx.fillStyle = '#5f6f87';
+      ctx.fillText(`Generația ${gen + 1}`, bounds.x + 32, y + 20);
+    });
+    ctx.restore();
+
+    drawExportRelations(ctx, layout);
+
+    const imageEntries = await Promise.all(state.people.map(async (person) => [person.id, await loadExportImage(person.image)]));
+    const images = new Map(imageEntries);
+    for (const person of state.people) await drawExportCard(ctx, person, images.get(person.id), layout);
+
+    let jpegBlob = await new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob || null), 'image/jpeg', 0.92);
+    });
+    if (!jpegBlob) {
+      jpegBlob = dataUrlToBlob(canvas.toDataURL('image/jpeg', 0.92));
+    }
+    downloadBlob(jpegBlob, `arbore-genealogic-${safeFileDate()}.jpeg`);
+    showToast('Imaginea JPEG a fost descărcată.');
+    setSyncStatus('JPEG exportat', 'ok');
+  } catch (error) {
+    console.error('Export JPEG:', error);
+    setSyncStatus('Export JPEG eșuat', 'error');
+    showToast(`Export JPEG: ${error.message || 'eroare necunoscută'}`);
+  }
+}
+
+
 function closeModal(){elements.dialog.close();resetImagePreview();}
 function validateForm(){clearErrors();if(!elements.name.value.trim()){document.querySelector('[data-error-for="name"]').textContent='Introdu numele persoanei.';elements.name.classList.add('invalid');elements.name.focus();return false;}const id=elements.id.value;if([elements.father.value,elements.mother.value,elements.partner.value].includes(id)&&id){showToast('O persoană nu poate fi propriul părinte sau partener.');return false;}return true;}
 async function optimizeImage(file){if(!file)return null;if(!file.type.startsWith('image/'))throw new Error('Fișierul ales nu este o imagine.');const bitmap=await createImageBitmap(file),maxSide=760,scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();return new Promise((resolve,reject)=>canvas.toBlob((blob)=>{if(!blob)return reject(new Error('Imaginea nu a putut fi procesată.'));const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);},'image/jpeg',.66));}
@@ -571,6 +981,7 @@ let toastTimer;function showToast(message){clearTimeout(toastTimer);elements.toa
 $('#openAddModal').addEventListener('click',openAddModal);$('#emptyAddButton').addEventListener('click',openAddModal);$('#closeModal').addEventListener('click',closeModal);$('#cancelButton').addEventListener('click',closeModal);elements.form.addEventListener('submit',handleSubmit);
 elements.search.addEventListener('input',(e)=>{state.search=e.target.value;render();});elements.image.addEventListener('change',(e)=>{const[file]=e.target.files;if(file)handleImage(file);});elements.removeImage.addEventListener('click',()=>{state.pendingImage=null;state.removeExistingImage=true;elements.image.value='';elements.imagePreview.removeAttribute('src');elements.imagePreview.hidden=true;elements.imagePrompt.hidden=false;elements.removeImage.hidden=true;});
 elements.syncButton.addEventListener('click',()=>syncFromRemote({notify:true}));elements.confirmDialog.addEventListener('close',()=>{if(elements.confirmDialog.returnValue==='confirm')confirmDelete();else state.deleteId=null;});elements.dialog.addEventListener('click',(e)=>{if(e.target===elements.dialog)closeModal();});
+elements.exportExcel?.addEventListener('click',exportExcel);elements.exportJpeg?.addEventListener('click',exportJpeg);
 elements.zoomIn.addEventListener('click',()=>setZoom(state.view.scale+.15));elements.zoomOut.addEventListener('click',()=>setZoom(state.view.scale-.15));elements.zoomReset.addEventListener('click',()=>{state.view={x:80,y:50,scale:1};applyView();});elements.fitTree.addEventListener('click',fitTree);elements.autoLayout.addEventListener('click',autoLayout);elements.fullscreen?.addEventListener('click',toggleFullscreen);elements.mobileView?.addEventListener('click',toggleMobileView);document.addEventListener('fullscreenchange',()=>{updateViewModeButtons();requestAnimationFrame(()=>{drawConnections();fitTree();});});
 elements.treeViewport.addEventListener('wheel',(e)=>{e.preventDefault(); zoomAt(e.deltaY,e.clientX,e.clientY);},{passive:false});
 elements.treeViewport.addEventListener('pointerdown',startPan);
